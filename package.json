@@ -1,0 +1,14 @@
+{
+  "name": "vercel-media-proxy",
+  "version": "1.0.0",
+  "description": "Serverless proxy for Google Photos media items",
+  "main": "api/media.js",
+  "type": "module",
+  "dependencies": {
+    "googleapis": "^131.0.0"
+  },
+  "scripts": {
+    "start": "node api/media.js"
+  },
+  "license": "MIT"
+}
