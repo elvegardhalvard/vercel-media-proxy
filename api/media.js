@@ -2,21 +2,47 @@ import { google } from "googleapis";
 
 export default async function handler(req, res) {
   try {
-    // 1) lag OAuth-klient med verdiene fra Vercel
-    const client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET
+    // 1) sjekk at vi har alle miljøvariabler
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+
+    if (!clientId || !clientSecret || !refreshToken) {
+      return res.status(500).json({
+        message: "Mangler én eller flere miljøvariabler.",
+        have: {
+          GOOGLE_CLIENT_ID: !!clientId,
+          GOOGLE_CLIENT_SECRET: !!clientSecret,
+          GOOGLE_REFRESH_TOKEN: !!refreshToken,
+        },
+      });
+    }
+
+    // 2) lag OAuth-klient
+    const oauth2Client = new google.auth.OAuth2(
+      clientId,
+      clientSecret,
+      "http://localhost" // placeholder, vi bruker refresh token uansett
     );
 
-    client.setCredentials({
-      refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+    oauth2Client.setCredentials({
+      refresh_token: refreshToken,
     });
 
-    // 2) få access token fra refresh token
-    const { credentials } = await client.refreshAccessToken();
-    const accessToken = credentials.access_token;
+    // 3) hent access token
+    const accessTokenResponse = await oauth2Client.getAccessToken();
+    const accessToken =
+      typeof accessTokenResponse === "string"
+        ? accessTokenResponse
+        : accessTokenResponse?.token;
 
-    // 3) kall Google Photos
+    if (!accessToken) {
+      return res.status(500).json({
+        message: "Klarte ikke å hente access token fra Google.",
+      });
+    }
+
+    // 4) kall Google Photos
     const resp = await fetch(
       "https://photoslibrary.googleapis.com/v1/mediaItems?pageSize=50",
       {
@@ -28,7 +54,7 @@ export default async function handler(req, res) {
 
     const data = await resp.json();
 
-    // 4) hvis Google svarer med feil → vis den til deg
+    // 5) hvis Google klager, vis det
     if (data.error) {
       return res.status(500).json({
         message: "Google Photos returnerte en feil",
@@ -36,16 +62,16 @@ export default async function handler(req, res) {
       });
     }
 
-    // 5) hvis det ikke er noen mediaItems → si det tydelig
+    // 6) hvis ingen mediaItems, si det
     if (!data.mediaItems || data.mediaItems.length === 0) {
       return res.status(200).json({
         message:
-          "Ingen mediaItems funnet. Enten er biblioteket tomt, eller appen har ikke tilgang til bildene.",
+          "Ingen mediaItems funnet. Enten er biblioteket tomt, eller dette tokenet ikke ser bildene.",
         raw: data,
       });
     }
 
-    // 6) ellers: map til formatet Tizen-appen din bruker
+    // 7) ellers: mapp til Tizen-formatet
     const items = data.mediaItems.map((item) => {
       const isVideo = item.mimeType?.startsWith("video/");
       const src = item.baseUrl + (isVideo ? "=dv" : "=w2000");
@@ -58,9 +84,11 @@ export default async function handler(req, res) {
 
     return res.status(200).json(items);
   } catch (err) {
-    console.error(err);
     return res.status(500).json({
       message: "Kunne ikke hente media",
       error: err.message,
+      // du kan avkommentere for mer info:
+      // stack: err.stack,
     });
   }
+}
