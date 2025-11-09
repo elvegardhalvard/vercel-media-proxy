@@ -24,7 +24,7 @@ export default async function handler(req, res) {
     );
     oauth2Client.setCredentials({ refresh_token: refreshToken });
 
-    // hent access token
+    // 1) hent access token
     const accessTokenResponse = await oauth2Client.getAccessToken();
     const accessToken =
       typeof accessTokenResponse === "string"
@@ -37,15 +37,22 @@ export default async function handler(req, res) {
       });
     }
 
-    // 👇 NYTT: spør Google hva dette tokenet faktisk har av scopes
-    const infoResp = await fetch(
-      `https://oauth2.googleapis.com/tokeninfo?access_token=${accessToken}`
+    // 2) kall Google Photos – ingen pynt, bare rett ut
+    const resp = await fetch(
+      "https://photoslibrary.googleapis.com/v1/mediaItems?pageSize=10",
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
     );
-    const info = await infoResp.json();
 
-    return res.status(200).json({
-      message: "Dette er tokenet vi faktisk fikk fra Google",
-      tokenInfo: info,
+    const data = await resp.json();
+
+    // send ALT Google sier tilbake til nettleseren
+    return res.status(resp.status).json({
+      httpStatusFromGoogle: resp.status,
+      googleRaw: data,
     });
   } catch (err) {
     return res.status(500).json({
